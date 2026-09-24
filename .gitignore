@@ -1,0 +1,28 @@
+# Python virtual environment
+.venv/
+venv/
+ENV/
+env/
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.orig
+
+# IDE & OS files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Testing & logs
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+
+# CTranslate2 / Hugging Face model cache (if downloaded locally)
+models/
+huggingface/

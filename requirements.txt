@@ -1,0 +1,18 @@
+# Core Speech-to-Text & Audio
+faster-whisper>=1.0.0,<2.0.0
+ctranslate2>=4.0.0,<5.0.0
+silero-vad>=5.1.0
+sounddevice>=0.4.6
+numpy>=1.24.0
+
+# GUI & Cross-Platform Overlay
+PyQt6>=6.5.0,<7.0.0
+pynput>=1.7.6
+
+# Parallel Multi-Language Translation
+deep-translator>=1.11.0
+requests>=2.31.0
+
+# Optional: Remote GPU Server
+fastapi>=0.100.0
+uvicorn>=0.20.0
