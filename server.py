@@ -94,7 +94,9 @@ def load_gpu_model(model_name: str, device: str, compute_type: str) -> None:
         compute_type = "int8"
 
     logger.info(
-        f"Loading faster-whisper '{model_name}' on {device.upper()} with {compute_type}..."
+        f"Loading faster-whisper '{model_name}' on {device.upper()} with {compute_type}...\n"
+        f"   Notice: If this is the first time loading '{model_name}', weights are downloading from Hugging Face (~1.5GB).\n"
+        f"   Please wait for the download to finish (do NOT press Ctrl+C)!"
     )
     try:
         state.model = WhisperModel(model_name, device=device, compute_type=compute_type)

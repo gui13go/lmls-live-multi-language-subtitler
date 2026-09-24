@@ -110,6 +110,7 @@ class WhisperTranscriber(threading.Thread):
         self.model = None
         self.resolved_device = "cpu"
         self.resolved_compute_type = "int8"
+        self._last_server_error_log = 0.0
 
         if self.server_url:
             self._verify_remote_server()
@@ -132,10 +133,16 @@ class WhisperTranscriber(threading.Thread):
             else:
                 logger.warning(f"Server responded with status {r.status_code}.")
         except Exception as exc:
-            logger.error(
-                f"Could not reach remote GPU server at {self.server_url} ({exc}). "
-                "Will attempt requests dynamically during execution."
-            )
+            err_msg = str(exc)
+            if "Connection refused" in err_msg or "111" in err_msg:
+                logger.error(
+                    f"⚠️ Remote GPU server at {self.server_url} refused connection!\n"
+                    f"   Please check your GPU machine and run:\n"
+                    f"   python3 server.py --host 0.0.0.0 --port 8000 --model large-v3-turbo --device cuda\n"
+                    f"   (If server.py was just started, allow it ~1-2 min to finish downloading model weights)"
+                )
+            else:
+                logger.error(f"Could not reach remote GPU server at {self.server_url}: {exc}")
 
     def _resolve_device_and_compute(self) -> Tuple[str, str]:
         """Validate device and compute type, with automatic fallback for CPU and CUDA."""
@@ -320,7 +327,18 @@ class WhisperTranscriber(threading.Thread):
             else:
                 logger.warning(f"Remote GPU server returned status {r.status_code}: {r.text}")
         except Exception as exc:
-            logger.error(f"Failed to communicate with remote GPU server: {exc}")
+            now = time.time()
+            # Throttle repetitive connection error messages to once every 10 seconds
+            if now - self._last_server_error_log > 10.0:
+                self._last_server_error_log = now
+                err_str = str(exc)
+                if "Connection refused" in err_str:
+                    logger.error(
+                        f"Remote GPU server ({self.server_url}) connection refused. "
+                        "Is server.py running on your GPU host?"
+                    )
+                else:
+                    logger.error(f"Failed to communicate with remote GPU server: {exc}")
 
     def _identify_whitelisted_language(
         self, audio: np.ndarray
