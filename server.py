@@ -227,45 +227,19 @@ def process_audio_data(
     spoken_lang = normalize_lang_code(detected_lang or info.language)
     logger.info(f"GPU STT ({stt_ms:.0f}ms) [{spoken_lang.upper()}]: {cleaned}")
 
-    # 3. Parallel Translation across targets
-    import concurrent.futures
-
-    translations: Dict[str, str] = {}
-    futures_map = {}
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(norm_targets))) as executor:
-        for tgt in norm_targets:
-            if tgt == spoken_lang or tgt.split("-")[0] == spoken_lang.split("-")[0]:
-                translations[tgt] = cleaned
-            else:
-                fut = executor.submit(
-                    state.translation_engine.translate_single, cleaned, spoken_lang, tgt
-                )
-                futures_map[fut] = tgt
-
-        done, not_done = concurrent.futures.wait(futures_map.keys(), timeout=3.5)
-        for fut in done:
-            tgt = futures_map[fut]
-            try:
-                translations[tgt] = fut.result()
-            except Exception:
-                translations[tgt] = f"[{tgt.upper()}] {cleaned}"
-
-        for fut in not_done:
-            tgt = futures_map[fut]
-            translations[tgt] = f"[{tgt.upper()}] {cleaned}"
-
+    # Return pure transcription result directly to client.
+    # The client (laptop) has full internet access and translates locally via its TranslationWorker.
     total_latency_ms = (time.time() - t0) * 1000.0
 
     logger.info(
-        f"GPU Total ({total_latency_ms:.1f}ms) [STT={stt_ms:.0f}ms]: {cleaned}"
+        f"GPU STT in {total_latency_ms:.1f}ms [{spoken_lang.upper()}]: {cleaned}"
     )
 
     return {
         "source_lang": spoken_lang,
         "original_text": cleaned,
         "confidence": float(lang_prob if detected_lang else info.language_probability),
-        "translations": translations,
+        "translations": {},
         "latency_ms": total_latency_ms,
     }
 
