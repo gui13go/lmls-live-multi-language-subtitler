@@ -144,7 +144,32 @@ class TranslationEngine:
             except Exception as e_deepl:
                 logger.warning(f"DeepL translation error: {e_deepl}")
 
-        # 2. Google Translator (if not disabled due to 429)
+        # 2. Direct high-speed Google Translate API
+        try:
+            import requests
+
+            url = "https://translate.googleapis.com/translate_a/single"
+            params = {
+                "client": "dict-chrome-ex",
+                "sl": "auto" if src == "auto" else src.split("-")[0],
+                "tl": tgt,
+                "dt": "t",
+                "q": text,
+            }
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
+            r = requests.get(url, params=params, headers=headers, timeout=2.2)
+            if r.status_code == 200:
+                data = r.json()
+                if data and data[0]:
+                    res = "".join([part[0] for part in data[0] if part and part[0]])
+                    if res.strip():
+                        return res.strip()
+        except Exception as e_gtx:
+            logger.debug(f"Direct Google API error: {e_gtx}")
+
+        # 3. Standard deep-translator GoogleTranslator
         if not self._google_disabled:
             try:
                 from deep_translator import GoogleTranslator
@@ -154,12 +179,9 @@ class TranslationEngine:
                 if res:
                     return res
             except Exception as exc:
-                logger.debug(
-                    f"Google Translator failed ({exc}). Failing over to MyMemory."
-                )
                 self._google_disabled = True
 
-        # 3. MyMemoryTranslator fallback
+        # 4. MyMemoryTranslator fallback
         try:
             from deep_translator import MyMemoryTranslator
 
@@ -167,12 +189,12 @@ class TranslationEngine:
             mm_tgt = to_mymemory_code(tgt)
             tr = MyMemoryTranslator(source=mm_src, target=mm_tgt)
             res = tr.translate(text)
-            if res:
+            if res and "MYMEMORY WARNING" not in res:
                 return res
         except Exception as fb_exc:
             logger.debug(f"MyMemory fallback failed for {src}->{tgt}: {fb_exc}")
 
-        # 4. Graceful fallback: return original text if translation unavailable
+        # 5. Graceful fallback: return original text if translation unavailable
         return f"[{tgt.upper()}] {text}"
 
 
