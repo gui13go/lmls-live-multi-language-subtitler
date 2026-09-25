@@ -115,22 +115,27 @@ def get_ct2_translator(src: str, tgt: str, device: str = "cuda", compute_type: s
         logger.info(f"Loading neural translation model '{repo_id}' on {device.upper()}...")
         model_dir = snapshot_download(repo_id)
 
-        sp = spm.SentencePieceProcessor()
-        # Find sentencepiece source model
-        spm_path = os.path.join(model_dir, "source.spm")
-        if not os.path.exists(spm_path):
-            spm_path = os.path.join(model_dir, "spm.model")
-
-        if os.path.exists(spm_path):
-            sp.load(spm_path)
+        sp_src = spm.SentencePieceProcessor()
+        spm_src_path = os.path.join(model_dir, "source.spm")
+        if not os.path.exists(spm_src_path):
+            spm_src_path = os.path.join(model_dir, "spm.model")
+        if os.path.exists(spm_src_path):
+            sp_src.load(spm_src_path)
         else:
-            sp = None
+            sp_src = None
+
+        sp_tgt = spm.SentencePieceProcessor()
+        spm_tgt_path = os.path.join(model_dir, "target.spm")
+        if os.path.exists(spm_tgt_path):
+            sp_tgt.load(spm_tgt_path)
+        else:
+            sp_tgt = sp_src
 
         tr = ctranslate2.Translator(model_dir, device=device, compute_type=compute_type)
         state.ct2_translators[pair_key] = tr
-        state.ct2_sp_models[pair_key] = sp
+        state.ct2_sp_models[pair_key] = (sp_src, sp_tgt)
         logger.info(f"Loaded neural translation model '{pair_key}' on {device.upper()}!")
-        return tr, sp
+        return tr, (sp_src, sp_tgt)
     except Exception as exc:
         logger.debug(f"Could not load neural translation model for {pair_key}: {exc}")
         return None, None
@@ -138,21 +143,23 @@ def get_ct2_translator(src: str, tgt: str, device: str = "cuda", compute_type: s
 
 def neural_translate_text(text: str, src: str, tgt: str, device: str = "cuda") -> Optional[str]:
     """Perform ~20ms local neural translation using CTranslate2."""
-    tr, sp = get_ct2_translator(src, tgt, device=device)
+    tr, sp_tuple = get_ct2_translator(src, tgt, device=device)
     if tr is None:
         return None
 
+    sp_src, sp_tgt = sp_tuple if sp_tuple else (None, None)
+
     try:
-        if sp:
-            subwords = sp.encode_as_pieces(text)
+        if sp_src:
+            subwords = sp_src.encode_as_pieces(text)
         else:
             subwords = text.split()
 
         results = tr.translate_batch([subwords], beam_size=1)
         output_tokens = results[0].hypotheses[0]
 
-        if sp:
-            translated = sp.decode_pieces(output_tokens)
+        if sp_tgt:
+            translated = sp_tgt.decode_pieces(output_tokens)
         else:
             translated = " ".join(output_tokens)
         return translated.strip()

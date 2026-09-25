@@ -220,6 +220,20 @@ class WhisperTranscriber(threading.Thread):
             except queue.Empty:
                 continue
 
+            # Real-time catch-up: If multiple audio segments backed up in the queue,
+            # drain old segments so the subtitles never lag behind reality!
+            dropped = 0
+            while self.audio_queue.qsize() > 1:
+                try:
+                    stale = self.audio_queue.get_nowait()
+                    self.audio_queue.task_done()
+                    segment = stale  # Jump to the latest fresh segment
+                    dropped += 1
+                except queue.Empty:
+                    break
+            if dropped > 0:
+                logger.debug(f"Skipped {dropped} stale buffered speech segments to maintain real-time sync.")
+
             try:
                 self._transcribe_segment(segment)
             except Exception as exc:
