@@ -293,7 +293,7 @@ class WhisperTranscriber(threading.Thread):
             "sample_rate": segment.sample_rate,
         }
         try:
-            r = requests.post(f"{self.server_url}/process", json=payload, timeout=6.0)
+            r = requests.post(f"{self.server_url}/process", json=payload, timeout=25.0)
             if r.status_code == 200:
                 data = r.json()
                 orig_text = data.get("original_text", "")

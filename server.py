@@ -229,7 +229,7 @@ def process_audio_data(
     translations: Dict[str, str] = {}
     futures_map = {}
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(norm_targets)) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(norm_targets))) as executor:
         for tgt in norm_targets:
             if tgt == spoken_lang or tgt.split("-")[0] == spoken_lang.split("-")[0]:
                 translations[tgt] = cleaned
@@ -239,12 +239,17 @@ def process_audio_data(
                 )
                 futures_map[fut] = tgt
 
-        for fut in concurrent.futures.as_completed(futures_map):
+        done, not_done = concurrent.futures.wait(futures_map.keys(), timeout=3.5)
+        for fut in done:
             tgt = futures_map[fut]
             try:
                 translations[tgt] = fut.result()
             except Exception:
                 translations[tgt] = f"[{tgt.upper()}] {cleaned}"
+
+        for fut in not_done:
+            tgt = futures_map[fut]
+            translations[tgt] = f"[{tgt.upper()}] {cleaned}"
 
     total_latency_ms = (time.time() - t0) * 1000.0
 
