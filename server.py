@@ -327,6 +327,9 @@ def process_audio_data(
             if en_text:
                 translations["en"] = en_text
                 logger.info(f"GPU Native Whisper EN Translation ({(time.time()-t_en)*1000:.0f}ms): {en_text}")
+        except Exception as e_tr:
+            logger.debug(f"Native Whisper translation error: {e_tr}")
+
     # Local Neural Translation via CTranslate2 (Opus-MT / Marian on GPU):
     # Ultra-low latency (~20ms), 100% offline, zero web requests!
     for tgt in norm_targets:
