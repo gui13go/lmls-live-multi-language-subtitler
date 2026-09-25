@@ -227,19 +227,41 @@ def process_audio_data(
     spoken_lang = normalize_lang_code(detected_lang or info.language)
     logger.info(f"GPU STT ({stt_ms:.0f}ms) [{spoken_lang.upper()}]: {cleaned}")
 
-    # Return pure transcription result directly to client.
-    # The client (laptop) has full internet access and translates locally via its TranslationWorker.
-    total_latency_ms = (time.time() - t0) * 1000.0
+    translations: Dict[str, str] = {}
+    for tgt in norm_targets:
+        if tgt == spoken_lang or tgt.split("-")[0] == spoken_lang.split("-")[0]:
+            translations[tgt] = cleaned
 
-    logger.info(
-        f"GPU STT in {total_latency_ms:.1f}ms [{spoken_lang.upper()}]: {cleaned}"
-    )
+    # Native Whisper GPU Translation:
+    # If the spoken audio was non-English (e.g. Chinese, Spanish, German) and English is a target,
+    # Whisper can translate directly to English using task="translate" in ~35ms on GPU!
+    if "en" in norm_targets and spoken_lang != "en":
+        try:
+            t_en = time.time()
+            en_segments, _ = state.model.transcribe(
+                audio_array,
+                task="translate",
+                beam_size=1,
+                best_of=1,
+                temperature=0.0,
+                condition_on_previous_text=False,
+                vad_filter=False,
+                without_timestamps=True,
+            )
+            en_text = clean_transcribed_text(" ".join([s.text for s in en_segments]))
+            if en_text:
+                translations["en"] = en_text
+                logger.info(f"GPU Native Whisper EN Translation ({(time.time()-t_en)*1000:.0f}ms): {en_text}")
+        except Exception as e_tr:
+            logger.debug(f"Native Whisper translation error: {e_tr}")
+
+    total_latency_ms = (time.time() - t0) * 1000.0
 
     return {
         "source_lang": spoken_lang,
         "original_text": cleaned,
         "confidence": float(lang_prob if detected_lang else info.language_probability),
-        "translations": {},
+        "translations": translations,
         "latency_ms": total_latency_ms,
     }
 

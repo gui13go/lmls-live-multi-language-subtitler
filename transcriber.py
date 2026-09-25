@@ -315,7 +315,10 @@ class WhisperTranscriber(threading.Thread):
                         latency_ms=latency_ms,
                     )
                     self.bundle_callback(bundle)
-                else:
+
+                # Check if some target languages are missing from server translations
+                missing_targets = [t for t in self.target_languages if t not in translations]
+                if missing_targets and self.result_callback:
                     result = TranscriptionResult(
                         text=orig_text,
                         language=spoken_lang,
