@@ -372,7 +372,7 @@ def process_audio_data(
             detected_lang = next(iter(whitelist_set))
 
     t_stt = time.time()
-    # 2. Fast GPU Transcription
+    # 2. Fast GPU Transcription with tight streaming budget
     segments, info = state.model.transcribe(
         audio_array,
         language=detected_lang,
@@ -383,6 +383,9 @@ def process_audio_data(
         condition_on_previous_text=False,
         vad_filter=False,
         without_timestamps=True,
+        compression_ratio_threshold=None,
+        log_prob_threshold=None,
+        no_speech_threshold=None,
     )
 
     full_text = " ".join([s.text for s in segments])

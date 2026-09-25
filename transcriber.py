@@ -112,18 +112,19 @@ class WhisperTranscriber(threading.Thread):
         self.resolved_compute_type = "int8"
         self._last_server_error_log = 0.0
 
+        self._session = None
         if self.server_url:
+            import requests
+            self._session = requests.Session()
             self._verify_remote_server()
         elif not self.mock_mode:
             self._load_model()
 
     def _verify_remote_server(self) -> None:
         """Verify remote GPU server health."""
-        import requests
-
         logger.info(f"Connecting to remote GPU server at {self.server_url}...")
         try:
-            r = requests.get(f"{self.server_url}/health", timeout=3.0)
+            r = self._session.get(f"{self.server_url}/health", timeout=3.0)
             if r.status_code == 200:
                 data = r.json()
                 logger.info(
@@ -307,7 +308,8 @@ class WhisperTranscriber(threading.Thread):
             "sample_rate": segment.sample_rate,
         }
         try:
-            r = requests.post(f"{self.server_url}/process", json=payload, timeout=25.0)
+            client = self._session if self._session is not None else requests
+            r = client.post(f"{self.server_url}/process", json=payload, timeout=25.0)
             if r.status_code == 200:
                 data = r.json()
                 orig_text = data.get("original_text", "")
