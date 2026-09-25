@@ -250,34 +250,40 @@ class TranslationWorker(threading.Thread):
                 )
                 futures_map[future] = tgt
 
-        # Gather results concurrently
-        if futures_map:
-            done, not_done = concurrent.futures.wait(
-                futures_map.keys(), timeout=3.0
+        # Immediately emit the original/spoken text to the UI so the user sees real-time speech!
+        self.result_callback(
+            TranslationBundle(
+                source_lang=spoken_lang,
+                original_text=original_text,
+                translations=dict(translations),
+                timestamp=item.timestamp,
+                latency_ms=(time.time() - start_time) * 1000.0,
             )
-            for fut in done:
+        )
+
+        # Gather remaining translations as they complete and update UI progressively
+        if futures_map:
+            for fut in concurrent.futures.as_completed(futures_map):
                 tgt = futures_map[fut]
                 try:
                     translations[tgt] = fut.result()
                 except Exception as exc:
-                    logger.warning(f"Translation failed for target '{tgt}': {exc}")
+                    logger.debug(f"Translation failed for '{tgt}': {exc}")
                     translations[tgt] = f"[{tgt.upper()}] {original_text}"
 
-            for fut in not_done:
-                tgt = futures_map[fut]
-                translations[tgt] = f"[{tgt.upper()}] {original_text}"
+                # Progressively update overlay as each language arrives!
+                elapsed_ms = (time.time() - start_time) * 1000.0
+                self.result_callback(
+                    TranslationBundle(
+                        source_lang=spoken_lang,
+                        original_text=original_text,
+                        translations=dict(translations),
+                        timestamp=item.timestamp,
+                        latency_ms=elapsed_ms,
+                    )
+                )
 
         elapsed_ms = (time.time() - start_time) * 1000.0
-
-        bundle = TranslationBundle(
-            source_lang=spoken_lang,
-            original_text=original_text,
-            translations=translations,
-            timestamp=item.timestamp,
-            latency_ms=elapsed_ms,
-        )
-
         logger.debug(
-            f"Completed parallel translations in {elapsed_ms:.1f}ms for targets: {list(translations.keys())}"
+            f"Completed translations in {elapsed_ms:.1f}ms for targets: {list(translations.keys())}"
         )
-        self.result_callback(bundle)
