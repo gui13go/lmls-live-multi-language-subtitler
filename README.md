@@ -190,12 +190,19 @@ Run the heavy neural network on your remote machine that has NVIDIA GPUs, while 
 # Clone or pull the repository:
 git pull
 
-# Run the automated server script (automatically creates .venv & installs GPU packages):
-./run_server.sh --host 0.0.0.0 --port 8000 --model large-v3-turbo --device cuda --compute-type float16
-```
-*(Or manually: `python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements-server.txt && python3 server.py --host 0.0.0.0 --port 8000 --model large-v3-turbo --device cuda --compute-type float16`)*
+# Install server dependencies:
+pip install -r requirements-server.txt
 
-*(Tip: On NVIDIA GPUs, `float16` or `bfloat16` with `large-v3-turbo` achieves state-of-the-art accuracy in ~30–50ms!)*
+# (Optional / Recommended) Pre-download model weights with progress bar:
+# If you are in regions with throttled access to Hugging Face, use the fast mirror:
+export HF_ENDPOINT=https://hf-mirror.com
+
+hf download Systran/faster-whisper-large-v3
+
+# Run the GPU server:
+python3 server.py --host 0.0.0.0 --port 8000 --model large-v3 --device cuda --compute-type float16
+```
+*(Tip: On NVIDIA GPUs, `float16` with `large-v3` or `large-v3-turbo` achieves state-of-the-art accuracy in ~30–50ms!)*
 
 2. **On your Local Laptop / Client**:
 ```bash
