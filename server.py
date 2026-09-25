@@ -88,6 +88,81 @@ class ServerState:
 state = ServerState()
 
 
+# NLLB language code mapping for EN, ZH, DE, ES, FR, JA, KO, etc.
+NLLB_LANG_MAP = {
+    "en": "eng_Latn",
+    "zh": "zho_Hans",
+    "zh-cn": "zho_Hans",
+    "zh-tw": "zho_Hant",
+    "de": "deu_Latn",
+    "es": "spa_Latn",
+    "fr": "fra_Latn",
+    "ja": "jpn_Jpan",
+    "ko": "kor_Hang",
+    "pt": "por_Latn",
+    "ru": "rus_Cyrl",
+    "it": "ita_Latn",
+}
+
+
+def get_nllb_translator(device: str = "cuda", compute_type: str = "float16"):
+    """Load NLLB model from local server directory if available."""
+    if hasattr(state, "nllb_translator") and state.nllb_translator is not None:
+        return state.nllb_translator, state.nllb_sp
+
+    home_dir = os.path.expanduser("~")
+    # Candidate local paths for NLLB CTranslate2
+    nllb_candidates = [
+        os.path.join(home_dir, "models", "nllb-ct2"),
+        os.path.join(home_dir, "models", "nllb-200-distilled-600M-ctranslate2"),
+        "/home/teachers/dt/viegas/models/nllb-ct2",
+        "/home/teachers/dt/viegas/models/nllb-200-distilled-600M-ctranslate2",
+    ]
+
+    model_path = None
+    for p in nllb_candidates:
+        if os.path.isdir(p) and (os.path.isfile(os.path.join(p, "model.bin")) or os.path.isfile(os.path.join(p, "shared_vocabulary.json"))):
+            model_path = p
+            break
+
+    if not model_path:
+        return None, None
+
+    try:
+        import ctranslate2
+        import sentencepiece as spm
+
+        logger.info(f"Loading NLLB CTranslate2 translation model from '{model_path}' on {device.upper()}...")
+        sp = spm.SentencePieceProcessor()
+        # Find sentencepiece / spm model
+        spm_file = None
+        for candidate_spm in ["source.spm", "spm.model", "sentencepiece.bpe.model", "spm"]:
+            f = os.path.join(model_path, candidate_spm)
+            if os.path.isfile(f):
+                spm_file = f
+                break
+        
+        if spm_file:
+            sp.load(spm_file)
+        else:
+            # Check models/nllb-200-distilled-1.3B or parent
+            fallback_spm = os.path.join(home_dir, "models", "nllb-200-distilled-1.3B", "sentencepiece.bpe.model")
+            if os.path.isfile(fallback_spm):
+                sp.load(fallback_spm)
+            else:
+                logger.warning(f"Could not find sentencepiece model in {model_path}")
+                return None, None
+
+        translator = ctranslate2.Translator(model_path, device=device, compute_type=compute_type)
+        state.nllb_translator = translator
+        state.nllb_sp = sp
+        logger.info(f"Loaded NLLB translation model successfully on {device.upper()}!")
+        return translator, sp
+    except Exception as exc:
+        logger.warning(f"Could not load NLLB CTranslate2 model: {exc}")
+        return None, None
+
+
 def get_ct2_translator(src: str, tgt: str, device: str = "cuda", compute_type: str = "float16"):
     """Get or dynamically load a local CTranslate2 neural translation model."""
     pair_key = f"{src}->{tgt}"
@@ -142,30 +217,48 @@ def get_ct2_translator(src: str, tgt: str, device: str = "cuda", compute_type: s
 
 
 def neural_translate_text(text: str, src: str, tgt: str, device: str = "cuda") -> Optional[str]:
-    """Perform ~20ms local neural translation using CTranslate2."""
+    """Perform ~20ms local neural translation using NLLB or CTranslate2 Opus-MT."""
+    # First priority: Check if NLLB multilingual CTranslate2 model is available
+    nllb_tr, nllb_sp = get_nllb_translator(device=device)
+    if nllb_tr is not None and nllb_sp is not None:
+        src_nllb = NLLB_LANG_MAP.get(src, NLLB_LANG_MAP.get(src.split("-")[0]))
+        tgt_nllb = NLLB_LANG_MAP.get(tgt, NLLB_LANG_MAP.get(tgt.split("-")[0]))
+        if src_nllb and tgt_nllb:
+            try:
+                tokens = [src_nllb] + nllb_sp.encode_as_pieces(text)
+                target_prefix = [[tgt_nllb]]
+                results = nllb_tr.translate_batch([tokens], target_prefix=target_prefix, beam_size=1)
+                output_tokens = results[0].hypotheses[0]
+                # Strip prefix token if present
+                if output_tokens and output_tokens[0] == tgt_nllb:
+                    output_tokens = output_tokens[1:]
+                translated = nllb_sp.decode_pieces(output_tokens).strip()
+                if translated:
+                    return translated
+            except Exception as e_nllb:
+                logger.debug(f"NLLB translation error ({src}->{tgt}): {e_nllb}")
+
+    # Second priority: Pair-specific Opus-MT models
     tr, sp_tuple = get_ct2_translator(src, tgt, device=device)
-    if tr is None:
-        return None
+    if tr is not None:
+        sp_src, sp_tgt = sp_tuple if sp_tuple else (None, None)
+        try:
+            if sp_src:
+                subwords = sp_src.encode_as_pieces(text)
+            else:
+                subwords = text.split()
 
-    sp_src, sp_tgt = sp_tuple if sp_tuple else (None, None)
+            results = tr.translate_batch([subwords], beam_size=1)
+            output_tokens = results[0].hypotheses[0]
+            if sp_tgt:
+                translated = sp_tgt.decode_pieces(output_tokens)
+            else:
+                translated = " ".join(output_tokens)
+            return translated.strip()
+        except Exception as e_nt:
+            logger.debug(f"Neural translation error ({src}->{tgt}): {e_nt}")
 
-    try:
-        if sp_src:
-            subwords = sp_src.encode_as_pieces(text)
-        else:
-            subwords = text.split()
-
-        results = tr.translate_batch([subwords], beam_size=1)
-        output_tokens = results[0].hypotheses[0]
-
-        if sp_tgt:
-            translated = sp_tgt.decode_pieces(output_tokens)
-        else:
-            translated = " ".join(output_tokens)
-        return translated.strip()
-    except Exception as e_nt:
-        logger.debug(f"Neural translation error ({src}->{tgt}): {e_nt}")
-        return None
+    return None
 
 
 def load_gpu_model(model_name: str, device: str, compute_type: str) -> None:
