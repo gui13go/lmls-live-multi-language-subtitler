@@ -196,6 +196,7 @@ def process_audio_data(
             logger.debug(f"GPU Language ID error: {exc}")
             detected_lang = next(iter(whitelist_set))
 
+    t_stt = time.time()
     # 2. Fast GPU Transcription
     segments, info = state.model.transcribe(
         audio_array,
@@ -211,8 +212,10 @@ def process_audio_data(
 
     full_text = " ".join([s.text for s in segments])
     cleaned = clean_transcribed_text(full_text)
+    stt_ms = (time.time() - t_stt) * 1000.0
 
     if not cleaned:
+        logger.info(f"GPU STT ({stt_ms:.0f}ms): [Silence/No text]")
         return {
             "source_lang": detected_lang or "en",
             "original_text": "",
@@ -222,6 +225,7 @@ def process_audio_data(
         }
 
     spoken_lang = normalize_lang_code(detected_lang or info.language)
+    logger.info(f"GPU STT ({stt_ms:.0f}ms) [{spoken_lang.upper()}]: {cleaned}")
 
     # 3. Parallel Translation across targets
     import concurrent.futures
@@ -254,7 +258,7 @@ def process_audio_data(
     total_latency_ms = (time.time() - t0) * 1000.0
 
     logger.info(
-        f"GPU processed in {total_latency_ms:.1f}ms [{spoken_lang.upper()}]: {cleaned}"
+        f"GPU Total ({total_latency_ms:.1f}ms) [STT={stt_ms:.0f}ms]: {cleaned}"
     )
 
     return {
