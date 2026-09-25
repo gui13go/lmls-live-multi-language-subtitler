@@ -20,19 +20,34 @@ import sys
 import time
 from typing import Dict, List, Optional
 
-# Automatically re-execute within local .venv if executed with system python
+# Automatically re-execute within local or user .venv if executed with system python
 if sys.prefix == getattr(sys, "base_prefix", sys.prefix):
     _curr_dir = os.path.dirname(os.path.abspath(__file__))
-    _venv_py = (
-        os.path.join(_curr_dir, ".venv", "Scripts", "python.exe")
-        if sys.platform == "win32"
-        else os.path.join(_curr_dir, ".venv", "bin", "python")
-    )
-    if os.path.isfile(_venv_py) and os.path.abspath(sys.executable) != os.path.abspath(_venv_py):
-        _args = sys.orig_argv[1:] if hasattr(sys, "orig_argv") else sys.argv
-        os.execv(_venv_py, [_venv_py] + _args)
+    _home_dir = os.path.expanduser("~")
+    _candidates = [
+        os.path.join(_curr_dir, ".venv", "bin", "python"),
+        os.path.join(_curr_dir, ".venv", "Scripts", "python.exe"),
+        os.path.join(_home_dir, ".venv-lmls", "bin", "python"),
+        os.path.join(_home_dir, ".venv", "bin", "python"),
+    ]
+    for _venv_py in _candidates:
+        if os.path.isfile(_venv_py) and os.path.abspath(sys.executable) != os.path.abspath(_venv_py):
+            _args = sys.orig_argv[1:] if hasattr(sys, "orig_argv") else sys.argv
+            os.execv(_venv_py, [_venv_py] + _args)
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:
+    print(
+        "\n❌ Missing required dependencies on this machine!\n"
+        "   To install server requirements, run:\n"
+        "     pip install --user fastapi uvicorn faster-whisper deep-translator torch numpy requests\n"
+        "   Or with a virtual environment:\n"
+        "     python3 -m venv ~/.venv-lmls\n"
+        "     source ~/.venv-lmls/bin/activate\n"
+        "     pip install fastapi uvicorn faster-whisper deep-translator torch numpy requests\n"
+    )
+    sys.exit(1)
 
 logging.basicConfig(
     level=logging.INFO,
