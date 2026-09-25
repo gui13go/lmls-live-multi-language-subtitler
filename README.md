@@ -187,14 +187,14 @@ Run the heavy neural network on your remote machine that has NVIDIA GPUs, while 
 
 1. **On your Remote GPU Server** (SSH into your GPU machine):
 ```bash
-# Create a virtual environment and install server requirements:
-python3 -m venv .venv
-source .venv/bin/activate
-pip install fastapi uvicorn faster-whisper deep-translator torch
+# Clone or pull the repository:
+git pull
 
-# Start the GPU inference server on port 8000:
-python3 server.py --host 0.0.0.0 --port 8000 --model large-v3-turbo --device cuda --compute-type float16
+# Run the automated server script (automatically creates .venv & installs GPU packages):
+./run_server.sh --host 0.0.0.0 --port 8000 --model large-v3-turbo --device cuda --compute-type float16
 ```
+*(Or manually: `python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements-server.txt && python3 server.py --host 0.0.0.0 --port 8000 --model large-v3-turbo --device cuda --compute-type float16`)*
+
 *(Tip: On NVIDIA GPUs, `float16` or `bfloat16` with `large-v3-turbo` achieves state-of-the-art accuracy in ~30–50ms!)*
 
 2. **On your Local Laptop / Client**:
