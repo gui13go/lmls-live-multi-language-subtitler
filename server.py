@@ -121,7 +121,24 @@ def load_gpu_model(model_name: str, device: str, compute_type: str) -> None:
         state.translation_engine = TranslationEngine(engine_name="google")
         logger.info(f"Model successfully loaded on {device.upper()}!")
     except Exception as exc:
-        logger.error(f"Failed to load model on {device}: {exc}")
+        logger.error(f"Failed to load model '{model_name}' on {device}: {exc}")
+        err_str = str(exc)
+        if "Connection reset by peer" in err_str or "ConnectError" in err_str or "104" in err_str:
+            logger.error(
+                "\n" + "=" * 70 + "\n"
+                "❌ NETWORK / FIREWALL ERROR CONNECTING TO HUGGING FACE:\n"
+                "   The server's outgoing internet connection to huggingface.co was reset.\n"
+                "   Options to fix:\n"
+                "   1. Use HF Mirror (if in China or restricted network):\n"
+                "      export HF_ENDPOINT=https://hf-mirror.com\n"
+                "      python3 server.py ...\n"
+                "   2. Or download on your laptop and rsync/scp to the server:\n"
+                "      rsync -avz ~/.cache/huggingface/ viegas@100.91.125.25:~/.cache/huggingface/\n"
+                "   3. Or pass a local model path directly:\n"
+                "      python3 server.py --model /path/to/model_dir\n"
+                + "=" * 70 + "\n"
+            )
+            sys.exit(1)
         if device == "cuda":
             logger.warning("Falling back to CPU int8 mode...")
             state.model = WhisperModel(model_name, device="cpu", compute_type="int8")
